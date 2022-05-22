@@ -27,6 +27,11 @@ func main() {
 	portaudio.Initialize()
 	defer portaudio.Terminate()
 
+	hostAPI, err := portaudio.DefaultHostApi()
+	check(err)
+	dev := hostAPI.DefaultOutputDevice
+	fmt.Printf("Default output: %s - %f Hz, max channels: %d\n", dev.Name, dev.DefaultSampleRate, dev.MaxOutputChannels)
+
 	ports := midi.InPorts()
 	if len(ports) == 0 {
 		fmt.Println("No MIDI input ports available")
@@ -39,6 +44,7 @@ func main() {
 			fmt.Println(id, port)
 		}
 	}
+	// ---
 
 	in := midi.FindInPort("Arturia BeatStep")
 	if in < 0 {
