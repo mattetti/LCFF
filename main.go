@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
 	"os"
 	"os/signal"
 	"sync"
@@ -50,20 +51,65 @@ func main() {
 
 	moo, err := NewSample("sounds/cow_moo_32b.wav")
 	if err != nil {
-		fmt.Printf("failed to load the cow sound - %v\n", err)
+		fmt.Printf("failed to load sound - %v\n", err)
 		moo.Close()
 		os.Exit(1)
 	}
 	defer moo.Close()
 
 	// -------------
+	powerUp, err := NewSample("sounds/power_up_32b.wav")
+	if err != nil {
+		fmt.Printf("failed to load sound - %v\n", err)
+		os.Exit(1)
+	}
+	defer powerUp.Close()
+
+	powerUp.Play(&sig)
+
+	// -------------
+	powerDown, err := NewSample("sounds/power_down_32b.wav")
+	if err != nil {
+		fmt.Printf("failed to load sound - %v\n", err)
+		os.Exit(1)
+	}
+	defer powerDown.Close()
+
+	// -------------
 	fart, err := NewSample("sounds/cow_fart_32b.wav")
 	if err != nil {
-		fmt.Printf("failed to load the cow sound - %v\n", err)
-		moo.Close()
+		fmt.Printf("failed to load sound - %v\n", err)
+		fart.Close()
 		os.Exit(1)
 	}
 	defer fart.Close()
+
+	// -------------
+
+	bleep, err := NewSample("sounds/bleep_32b.wav")
+	if err != nil {
+		fmt.Printf("failed to load %s - %v\n", bleep.Path, err)
+		os.Exit(1)
+	}
+	defer bleep.Close()
+
+	// -------------
+	scan, err := NewSample("sounds/scan_32b.wav")
+	if err != nil {
+		fmt.Printf("failed to load sound - %v\n", err)
+		scan.Close()
+		os.Exit(1)
+	}
+	defer scan.Close()
+
+	// -------------
+	screenBeeps, err := NewSample("sounds/ScreenBeeps_32b.wav")
+	if err != nil {
+		fmt.Printf("failed to load sound - %v\n", err)
+		screenBeeps.Close()
+		os.Exit(1)
+	}
+	defer screenBeeps.Close()
 
 	// -------------
 	defaultDevice, err := portaudio.DefaultOutputDevice()
@@ -87,13 +133,17 @@ func main() {
 		case msg.GetNoteStart(&ch, &key, &vel):
 
 			fmt.Printf("starting note %d [%s] on channel %v with velocity %v\n", key, midi.Note(key), ch, vel)
-			// Ab3 - Pad 1
-			if key == 44 {
+			switch key {
+			case 44: // pad 1
 				go moo.Play(&sig)
-			}
-			// A3 - Pad 2
-			if key == 45 {
+			case 45: // pad 2
 				go fart.Play(&sig)
+			default:
+				if rand.Intn(10)%2 == 0 {
+					go screenBeeps.Play(&sig)
+				}
+				go scan.Play(&sig)
+				go bleep.Play(&sig)
 			}
 		case msg.GetNoteEnd(&ch, &key):
 			fmt.Printf("ending note %s on channel %v\n", midi.Note(key), ch)
@@ -107,10 +157,15 @@ func main() {
 		return
 	}
 
+	fmt.Println("Listening to MIDI...input")
+	bleep.Play(&sig)
+
 	for {
 		select {
 		case <-sig:
 			stop()
+			powerDown.Play(&sig)
+			time.Sleep(1 * time.Second)
 			return
 		default:
 		}
