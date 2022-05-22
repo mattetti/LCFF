@@ -55,7 +55,6 @@ func main() {
 		os.Exit(1)
 	}
 	defer moo.Close()
-	// out := make([]int32, 8192)
 
 	// -------------
 	fart, err := NewSample("sounds/cow_fart_32b.wav")
@@ -65,7 +64,6 @@ func main() {
 		os.Exit(1)
 	}
 	defer fart.Close()
-	// out2 := make([]int32, 8192)
 
 	// -------------
 	defaultDevice, err := portaudio.DefaultOutputDevice()
@@ -75,14 +73,6 @@ func main() {
 	}
 	fmt.Println("Default output device:", defaultDevice.Name)
 
-	stream, err := portaudio.OpenDefaultStream(0, int(moo.Decoder.NumChans), float64(moo.Decoder.SampleRate), len(moo.Buffer), &moo.Buffer)
-	check(err)
-	defer stream.Close()
-
-	stream2, err := portaudio.OpenDefaultStream(0, int(fart.Decoder.NumChans), float64(fart.Decoder.SampleRate), len(fart.Buffer), &fart.Buffer)
-	check(err)
-	defer stream2.Close()
-
 	stop, err := midi.ListenTo(in, func(msg midi.Message, timestampms int32) {
 		var bt []byte
 		var ch, key, vel uint8
@@ -91,18 +81,19 @@ func main() {
 			fmt.Printf("got sysex: % X\n", bt)
 			// Stop control
 			if bytes.Compare(bt, []byte{0x7F, 0x7F, 0x06, 0x01}) == 0 {
-				os.Exit(0)
+				fmt.Println("got a stop command")
+				sig <- os.Interrupt
 			}
 		case msg.GetNoteStart(&ch, &key, &vel):
 
 			fmt.Printf("starting note %d [%s] on channel %v with velocity %v\n", key, midi.Note(key), ch, vel)
 			// Ab3 - Pad 1
 			if key == 44 {
-				go func() { playAudioFile(moo, stream, &sig) }()
+				go moo.Play(&sig)
 			}
 			// A3 - Pad 2
 			if key == 45 {
-				go func() { playAudioFile(fart, stream2, &sig) }()
+				go fart.Play(&sig)
 			}
 		case msg.GetNoteEnd(&ch, &key):
 			fmt.Printf("ending note %s on channel %v\n", midi.Note(key), ch)
@@ -185,15 +176,65 @@ func check(err error) {
 }
 
 type Sample struct {
-	file    *os.File
-	Path    string
-	Decoder *wav.Decoder
-	Mutex   sync.Mutex
-	Buffer  []int32
+	file           *os.File
+	Path           string
+	Decoder        *wav.Decoder
+	Mutex          sync.Mutex
+	Buffer         []int32
+	Stream         *portaudio.Stream
+	decodingBuffer *audio.IntBuffer
 }
 
 func (s *Sample) Close() {
 	s.file.Close()
+	s.Stream.Close()
+}
+
+func (sample *Sample) Play(sig *chan (os.Signal)) {
+	sample.Mutex.Lock()
+	defer sample.Mutex.Unlock()
+	check(sample.Stream.Start())
+
+	defer sample.Stream.Stop()
+
+	n, err := sample.Decoder.PCMBuffer(sample.decodingBuffer)
+	//fmt.Println(dec.BitDepth)
+	// Assuming 32bit audio for now
+	for i := range sample.decodingBuffer.Data {
+		sample.Buffer[i] = int32(sample.decodingBuffer.Data[i])
+	}
+	if err = sample.Stream.Write(); err != nil {
+		fmt.Println(err)
+		time.Sleep(150 * time.Millisecond)
+		if err = sample.Stream.Stop(); err != nil {
+			fmt.Println(err)
+			return
+		}
+		sample.Stream.Start()
+		if err = sample.Stream.Write(); err != nil {
+			fmt.Println(err)
+			return
+		}
+	}
+
+	for n > 0 && err == nil {
+		n, err = sample.Decoder.PCMBuffer(sample.decodingBuffer)
+		// convert buf to a slice of int32 values
+		for i := range sample.decodingBuffer.Data {
+			sample.Buffer[i] = int32(sample.decodingBuffer.Data[i])
+		}
+		check(sample.Stream.Write())
+		select {
+		case <-*sig:
+			return
+		default:
+		}
+	}
+	if err != nil {
+		fmt.Println("failed to read the PCM buffer", err)
+	} else {
+		sample.Decoder.Rewind()
+	}
 }
 
 func NewSample(path string) (sample *Sample, err error) {
@@ -210,5 +251,8 @@ func NewSample(path string) (sample *Sample, err error) {
 	if !sample.Decoder.IsValidFile() {
 		return sample, fmt.Errorf("Not a valid WAV file")
 	}
-	return sample, nil
+	sample.decodingBuffer = &audio.IntBuffer{Format: sample.Decoder.Format(), Data: make([]int, len(sample.Buffer))}
+	sample.Stream, err = portaudio.OpenDefaultStream(0, int(sample.Decoder.NumChans),
+		float64(sample.Decoder.SampleRate), len(sample.Buffer), &sample.Buffer)
+	return sample, err
 }
