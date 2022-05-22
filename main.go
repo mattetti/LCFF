@@ -67,6 +67,7 @@ func main() {
 	powerUp, err := NewSample("sounds/power_up_32b.wav")
 	if err != nil {
 		fmt.Printf("failed to load sound - %v\n", err)
+		powerUp.Close()
 		os.Exit(1)
 	}
 	defer powerUp.Close()
@@ -77,6 +78,7 @@ func main() {
 	powerDown, err := NewSample("sounds/power_down_32b.wav")
 	if err != nil {
 		fmt.Printf("failed to load sound - %v\n", err)
+		powerDown.Close()
 		os.Exit(1)
 	}
 	defer powerDown.Close()
@@ -95,6 +97,7 @@ func main() {
 	bleep, err := NewSample("sounds/bleep_32b.wav")
 	if err != nil {
 		fmt.Printf("failed to load %s - %v\n", bleep.Path, err)
+		bleep.Close()
 		os.Exit(1)
 	}
 	defer bleep.Close()
@@ -199,8 +202,15 @@ type Sample struct {
 }
 
 func (s *Sample) Close() {
-	s.file.Close()
-	s.Stream.Close()
+	if s.file != nil {
+		s.file.Close()
+	}
+	if s.Stream != nil {
+		if _, err := s.Stream.AvailableToWrite(); err != nil {
+			s.Stream.Close()
+		}
+	}
+
 }
 
 func (sample *Sample) Play(sig *chan (os.Signal)) {
