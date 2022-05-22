@@ -123,7 +123,8 @@ func main() {
 		fmt.Println("Failed to open the default output device:", err)
 		os.Exit(1)
 	}
-	fmt.Println("Default output device:", defaultDevice.Name)
+	fmt.Println("Default output device used:", defaultDevice.Name)
+	defaultDevice.DefaultSampleRate = 48000
 
 	stop, err := midi.ListenTo(in, func(msg midi.Message, timestampms int32) {
 		var bt []byte
@@ -301,7 +302,7 @@ func (sample *Sample) Play(sig *chan (os.Signal)) {
 func NewSample(path string) (sample *Sample, err error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open %s - %w", path, err)
 	}
 	sample = &Sample{
 		file:    f,
@@ -315,5 +316,8 @@ func NewSample(path string) (sample *Sample, err error) {
 	sample.decodingBuffer = &audio.IntBuffer{Format: sample.Decoder.Format(), Data: make([]int, len(sample.Buffer))}
 	sample.Stream, err = portaudio.OpenDefaultStream(0, int(sample.Decoder.NumChans),
 		float64(sample.Decoder.SampleRate), len(sample.Buffer), &sample.Buffer)
+	if err != nil {
+		err = fmt.Errorf("failed to open stream with channels: %d, sample rate: %d, buffer length: %d - %w", sample.Decoder.NumChans, sample.Decoder.SampleRate, len(sample.Buffer), err)
+	}
 	return sample, err
 }
