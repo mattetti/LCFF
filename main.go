@@ -181,58 +181,9 @@ func main() {
 
 }
 
-func playAudioFile(sample *Sample, stream *portaudio.Stream, sig *chan (os.Signal)) {
-	fmt.Println("trying to play something")
-	sample.Mutex.Lock()
-	defer sample.Mutex.Unlock()
-	check(stream.Start())
-
-	defer stream.Stop()
-
-	buf := &audio.IntBuffer{Format: sample.Decoder.Format(), Data: make([]int, len(sample.Buffer))}
-	n, err := sample.Decoder.PCMBuffer(buf)
-	//fmt.Println(dec.BitDepth)
-	// Assuming 32bit audio for now
-	for i := range buf.Data {
-		sample.Buffer[i] = int32(buf.Data[i])
-	}
-	if err = stream.Write(); err != nil {
-		fmt.Println(err)
-		time.Sleep(150 * time.Millisecond)
-		if err = stream.Stop(); err != nil {
-			fmt.Println(err)
-			return
-		}
-		stream.Start()
-		if err = stream.Write(); err != nil {
-			fmt.Println(err)
-			return
-		}
-	}
-
-	for n > 0 && err == nil {
-		n, err = sample.Decoder.PCMBuffer(buf)
-		// convert buf to a slice of int32 values
-		for i := range buf.Data {
-			sample.Buffer[i] = int32(buf.Data[i])
-		}
-		check(stream.Write())
-		select {
-		case <-*sig:
-			return
-		default:
-		}
-	}
-	if err != nil {
-		fmt.Println("failed to read the PCM buffer", err)
-	} else {
-		sample.Decoder.Rewind()
-	}
-
-}
-
 func check(err error) {
 	if err != nil {
+		fmt.Println("Error check triggered a panic:", err)
 		panic(err)
 	}
 }
@@ -255,7 +206,9 @@ func (s *Sample) Close() {
 func (sample *Sample) Play(sig *chan (os.Signal)) {
 	sample.Mutex.Lock()
 	defer sample.Mutex.Unlock()
-	check(sample.Stream.Start())
+	if err := sample.Stream.Start(); err != nil {
+		fmt.Printf("failed to start the stream for sample %s: %v\n", sample.Path, err)
+	}
 
 	defer sample.Stream.Stop()
 
@@ -285,7 +238,10 @@ func (sample *Sample) Play(sig *chan (os.Signal)) {
 		for i := range sample.decodingBuffer.Data {
 			sample.Buffer[i] = int32(sample.decodingBuffer.Data[i])
 		}
-		check(sample.Stream.Write())
+		err = sample.Stream.Write()
+		if err != nil {
+			fmt.Printf("failed to write sample %s to stream: %v\n", sample.Path, err)
+		}
 		select {
 		case <-*sig:
 			return
@@ -317,7 +273,7 @@ func NewSample(path string) (sample *Sample, err error) {
 	sample.Stream, err = portaudio.OpenDefaultStream(0, int(sample.Decoder.NumChans),
 		float64(sample.Decoder.SampleRate), len(sample.Buffer), &sample.Buffer)
 	if err != nil {
-		err = fmt.Errorf("failed to open stream with channels: %d, sample rate: %d, buffer length: %d - %w", sample.Decoder.NumChans, sample.Decoder.SampleRate, len(sample.Buffer), err)
+		err = fmt.Errorf("failed to open stream for path %s, with channels: %d, sample rate: %d, buffer length: %d - %w", sample.Path, sample.Decoder.NumChans, sample.Decoder.SampleRate, len(sample.Buffer), err)
 	}
 	return sample, err
 }
