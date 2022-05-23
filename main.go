@@ -233,9 +233,9 @@ func main() {
 					}
 				}()
 			case 37: // pad 10
-				go buzz.Play(&sig)
-			case 38: // pad 11
 				go screenBeeps.Play(&sig)
+			case 38: // pad 11
+				go buzz.Play(&sig)
 			case 39: // pad 12
 				go powerDown.Play(&sig)
 			case 40: // pad 13
