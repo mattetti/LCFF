@@ -220,12 +220,12 @@ func main() {
 				go computing.Play(&sig)
 			case 37: // pad 11
 				go buzz.Play(&sig)
-			case 38:
+			case 38: // pad 12
 				go scan.Play(&sig)
 			case 39: // pad 13
 				go screenBeeps.Play(&sig)
-			case 40: // pad 14
-				//go bleep.Play(&sig)
+			// case 40: // pad 14
+			// 	go bleep.Play(&sig)
 			case 43: // pad 16
 				go applause.Play(&sig)
 
