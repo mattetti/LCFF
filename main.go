@@ -200,6 +200,9 @@ func main() {
 				fmt.Printf("got sysex: % X\n", bt)
 			}
 		case msg.GetNoteStart(&ch, &key, &vel):
+			if *flagDebug {
+				fmt.Printf("starting note %d [%s] on channel %v with velocity %v\n", key, midi.Note(key), ch, vel)
+			}
 			switch key {
 			case 44: // pad 1
 				go moo.Play(&sig)
@@ -215,17 +218,37 @@ func main() {
 				go powerUp.Play(&sig)
 			case 51: // pad 8
 				go powerDown.Play(&sig)
+				go func() {
+					for i := 0; i < 30; i++ {
+						outputAnalysisMidiSeq()
+					}
+				}()
 			//
 			case 36: // pad 9
 				go computing.Play(&sig)
-			case 37: // pad 11
+				go func() {
+					time.Sleep(time.Millisecond * 500)
+					for i := 0; i < 20; i++ {
+						outputAnalysisMidiSeq()
+					}
+				}()
+			case 37: // pad 10
 				go buzz.Play(&sig)
-			case 38: // pad 12
-				go scan.Play(&sig)
-			case 39: // pad 13
+			case 38: // pad 11
 				go screenBeeps.Play(&sig)
-			// case 40: // pad 14
-			// 	go bleep.Play(&sig)
+			case 39: // pad 12
+				go powerDown.Play(&sig)
+			case 40: // pad 13
+				go applause.Play(&sig)
+				go func() {
+					for i := 0; i < 20; i++ {
+						outputAnalysisMidiSeq()
+					}
+				}()
+			case 41: // pad 14
+				go scan.Play(&sig)
+			case 42: // pad 15
+				go bleep.Play(&sig)
 			case 43: // pad 16
 				go applause.Play(&sig)
 
@@ -252,6 +275,7 @@ func main() {
 	}
 
 	fmt.Println("Listening to MIDI...input")
+	go outputMidiSeq()
 	bleep.Play(&sig)
 
 	for {
@@ -266,6 +290,66 @@ func main() {
 		time.Sleep(150 * time.Millisecond)
 	}
 
+}
+
+func outputMidiSeq() {
+	outPort := midi.FindOutPort("Arturia BeatStep")
+	if outPort < 0 {
+		fmt.Println("Arturia BeatStep MIDI output not found")
+		return
+	}
+	midiOut, err := midi.SendTo(outPort)
+	if err != nil {
+		fmt.Println("Failed to prepare the MIDI output:", err)
+		return
+	}
+	playNote := func(key uint8) {
+		if err := midiOut(midi.NoteOn(0, key, 127)); err != nil {
+			fmt.Printf("Failed to send note  %d on: %v\n", key, err)
+		}
+		time.Sleep(time.Millisecond * 30)
+		midiOut(midi.NoteOff(0, key))
+	}
+	for j := 0; j < 2; j++ {
+		// top row
+		for i := 44; i <= 44+7; i++ {
+			playNote(uint8(i))
+		}
+		// bottom row
+		for i := 36; i <= 36+7; i++ {
+			playNote(uint8(i))
+		}
+	}
+}
+
+func outputAnalysisMidiSeq() {
+	outPort := midi.FindOutPort("Arturia BeatStep")
+	if outPort < 0 {
+		fmt.Println("Arturia BeatStep MIDI output not found")
+		return
+	}
+	midiOut, err := midi.SendTo(outPort)
+	if err != nil {
+		fmt.Println("Failed to prepare the MIDI output:", err)
+		return
+	}
+	playNotes := func(keys ...uint8) {
+		for _, key := range keys {
+			if err := midiOut(midi.NoteOn(0, key, 127)); err != nil {
+				fmt.Printf("Failed to send note  %d on: %v\n", key, err)
+			}
+		}
+		time.Sleep(time.Millisecond * 20)
+
+		for _, key := range keys {
+			midiOut(midi.NoteOff(0, key))
+		}
+	}
+
+	// top and bottom rows at once
+	for i := 36; i <= 36+7; i++ {
+		playNotes(uint8(i), uint8(i+8))
+	}
 }
 
 func check(err error) {
