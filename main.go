@@ -20,6 +20,7 @@ import (
 
 var (
 	flagUniqueStream = flag.Bool("unique-stream", false, "use a unique stream shared sample (needed when the platform supports)")
+	flagDebug        = flag.Bool("debug", false, "enable debug mode")
 )
 
 func main() {
@@ -146,29 +147,37 @@ func main() {
 		var ch, key, vel uint8
 		switch {
 		case msg.GetSysEx(&bt):
-			fmt.Printf("got sysex: % X\n", bt)
 			// Stop control
 			if bytes.Compare(bt, []byte{0x7F, 0x7F, 0x06, 0x01}) == 0 {
 				fmt.Println("got a stop command")
 				sig <- os.Interrupt
+			} else {
+				fmt.Printf("got sysex: % X\n", bt)
 			}
 		case msg.GetNoteStart(&ch, &key, &vel):
-
-			fmt.Printf("starting note %d [%s] on channel %v with velocity %v\n", key, midi.Note(key), ch, vel)
 			switch key {
 			case 44: // pad 1
 				go moo.Play(&sig)
 			case 45: // pad 2
 				go fart.Play(&sig)
+			case 36: // pad 9
+				go scan.Play(&sig)
+			case 37: // pad 10
+				go bleep.Play(&sig)
+			case 38: // pad 11
+				go screenBeeps.Play(&sig)
 			default:
 				if rand.Intn(10)%2 == 0 {
 					go screenBeeps.Play(&sig)
+				} else if rand.Intn(2)%2 == 0 {
+					go scan.Play(&sig)
+				} else {
+					go bleep.Play(&sig)
 				}
-				go scan.Play(&sig)
-				go bleep.Play(&sig)
+				// fmt.Printf("starting note %d [%s] on channel %v with velocity %v\n", key, midi.Note(key), ch, vel)
 			}
 		case msg.GetNoteEnd(&ch, &key):
-			fmt.Printf("ending note %s on channel %v\n", midi.Note(key), ch)
+			//fmt.Printf("ending note %s on channel %v\n", midi.Note(key), ch)
 		default:
 			// ignore
 		}
@@ -185,9 +194,9 @@ func main() {
 	for {
 		select {
 		case <-sig:
+			fmt.Println("Ciao!")
 			stop()
 			powerDown.Play(&sig)
-			time.Sleep(1 * time.Second)
 			return
 		default:
 		}
@@ -253,18 +262,21 @@ func (s *Sample) Close() {
 }
 
 func (sample *Sample) Play(ch *chan (os.Signal)) {
-	sample.Mutex.Lock()
-	defer sample.Mutex.Unlock()
 
 	// if our sample doesn't have a stream, we use the engine to play it.
 	if sample.Stream == nil {
-		fmt.Println("Playing", sample.Path, "via a unique stream")
+		if *flagDebug {
+			fmt.Println("Playing", sample.Path, "via a unique stream")
+		}
 		err := sample.Engine.PlaySample(sample, ch)
 		if err != nil {
 			fmt.Println("Failed to play sample:", err)
 		}
 		return
 	}
+
+	sample.Mutex.Lock()
+	defer sample.Mutex.Unlock()
 
 	if sample.decodingBuffer == nil {
 		sample.decodingBuffer = &audio.IntBuffer{Format: sample.Decoder.Format(), Data: make([]int, len(sample.Buffer))}
@@ -306,22 +318,46 @@ func (sample *Sample) Play(ch *chan (os.Signal)) {
 // in that case, we need to use a unique stream.
 // The engine stream is set to stereo/48KHz and can only play 1 sample at a time.
 type Engine struct {
-	Stream *portaudio.Stream
-	mutex  sync.Mutex
-	Buffer []int32
+	Stream    *portaudio.Stream
+	mutex     sync.Mutex
+	Buffer    []int32
+	IsPlaying bool
+	cutoffCh  chan (bool)
 }
 
 func NewEngine() (engine *Engine, err error) {
 	engine = &Engine{
-		Buffer: make([]int32, 8192),
+		Buffer:   make([]int32, 1024),
+		cutoffCh: make(chan bool, 12),
 	}
 	engine.Stream, err = portaudio.OpenDefaultStream(0, 2, 48000, len(engine.Buffer), &engine.Buffer)
 	return engine, err
 }
 
 func (e *Engine) PlaySample(sample *Sample, ch *chan (os.Signal)) error {
+	wasWaiting := false
+	if e.IsPlaying {
+		if *flagDebug {
+			fmt.Printf("Engine is already playing a sample, %s is waiting\n", sample.Path)
+		}
+		wasWaiting = true
+		e.cutoffCh <- true
+		if *flagDebug {
+			fmt.Println("Waiting for engine to finish playing")
+		}
+	}
 	e.mutex.Lock()
-	defer e.mutex.Unlock()
+	if wasWaiting {
+		if *flagDebug {
+			fmt.Printf("%s is now playing\n", sample.Path)
+		}
+	}
+
+	e.IsPlaying = true
+	defer func() {
+		e.IsPlaying = false
+		e.mutex.Unlock()
+	}()
 
 	if err := e.Stream.Start(); err != nil {
 		return fmt.Errorf("failed to start the stream for sample %s: %w\n", sample.Path, err)
@@ -331,9 +367,9 @@ func (e *Engine) PlaySample(sample *Sample, ch *chan (os.Signal)) error {
 
 	n := 42
 	var err error
-
 	buffer := &audio.IntBuffer{Format: sample.Decoder.Format(), Data: make([]int, len(e.Buffer))}
 
+feedPortAudio:
 	for n > 0 && err == nil {
 		n, err = sample.Decoder.PCMBuffer(buffer)
 		// convert buf to a slice of int32 values
@@ -345,9 +381,11 @@ func (e *Engine) PlaySample(sample *Sample, ch *chan (os.Signal)) error {
 			err = fmt.Errorf("failed to write sample %s to stream: %v\n", sample.Path, err)
 		}
 		select {
-		case <-*ch:
-			fmt.Println("exit early")
-			return nil
+		case foo := <-e.cutoffCh:
+			if *flagDebug {
+				fmt.Printf("Cutoff triggered for sample %s - %v\n", sample.Path, foo)
+			}
+			break feedPortAudio
 		default:
 		}
 	}
