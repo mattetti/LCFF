@@ -21,12 +21,14 @@ import (
 var (
 	flagUniqueStream = flag.Bool("unique-stream", false, "use a unique stream shared sample (needed when the platform supports)")
 	flagDebug        = flag.Bool("debug", false, "enable debug mode")
+	useSingleStream  = false
 )
 
 func main() {
 	flag.Parse()
-	if runtime.GOOS == "Linux" {
-		*flagUniqueStream = true
+	if runtime.GOOS == "Linux" || *flagUniqueStream {
+		useSingleStream = true
+		fmt.Println("using a single stream")
 	}
 
 	defer midi.CloseDriver()
@@ -239,7 +241,7 @@ func NewSample(path string, engine *Engine) (sample *Sample, err error) {
 		return sample, fmt.Errorf("Not a valid WAV file")
 	}
 	// some platforms don't support multiple streams
-	if !*flagUniqueStream {
+	if !useSingleStream {
 		sample.Stream, err = portaudio.OpenDefaultStream(0, int(sample.Decoder.NumChans),
 			float64(sample.Decoder.SampleRate), len(sample.Buffer), &sample.Buffer)
 		if err != nil {
