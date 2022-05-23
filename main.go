@@ -144,13 +144,21 @@ func main() {
 	defer vaccuum.Close()
 
 	// -------------
-	buzz, err := NewSample("sounds/buzz_32b.wav", engine)
+	buzz, err := NewSample("sounds/electric_buzz_32b.wav", engine)
 	if err != nil {
 		fmt.Printf("failed to load sound - %v\n", err)
 		buzz.Close()
 		os.Exit(1)
 	}
 	defer buzz.Close()
+
+	endBuzz, err := NewSample("sounds/buzz_32b.wav", engine)
+	if err != nil {
+		fmt.Printf("failed to load sound - %v\n", err)
+		buzz.Close()
+		os.Exit(1)
+	}
+	defer endBuzz.Close()
 
 	// -------------
 	applause, err := NewSample("sounds/applause_32b.wav", engine)
@@ -190,6 +198,8 @@ func main() {
 				go fart.Play(&sig)
 			case 46: // pad 3
 				go vaccuum.Play(&sig)
+			case 47: // pad 4
+				go endBuzz.Play(&sig)
 
 			case 36: // pad 9
 				go scan.Play(&sig)
