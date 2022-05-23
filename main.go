@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"os"
 	"os/signal"
-	"runtime"
 	"sync"
 	"time"
 
@@ -26,9 +25,9 @@ var (
 
 func main() {
 	flag.Parse()
-	if runtime.GOOS == "Linux" || *flagUniqueStream {
+	if *flagUniqueStream {
 		useSingleStream = true
-		fmt.Println("using a single stream")
+		fmt.Println("Using a single stream")
 	}
 
 	defer midi.CloseDriver()
@@ -136,6 +135,33 @@ func main() {
 	defer screenBeeps.Close()
 
 	// -------------
+	vaccuum, err := NewSample("sounds/vaccuum_32b.wav", engine)
+	if err != nil {
+		fmt.Printf("failed to load sound - %v\n", err)
+		vaccuum.Close()
+		os.Exit(1)
+	}
+	defer vaccuum.Close()
+
+	// -------------
+	buzz, err := NewSample("sounds/buzz_32b.wav", engine)
+	if err != nil {
+		fmt.Printf("failed to load sound - %v\n", err)
+		buzz.Close()
+		os.Exit(1)
+	}
+	defer buzz.Close()
+
+	// -------------
+	applause, err := NewSample("sounds/applause_32b.wav", engine)
+	if err != nil {
+		fmt.Printf("failed to load sound - %v\n", err)
+		applause.Close()
+		os.Exit(1)
+	}
+	defer applause.Close()
+
+	// -------------
 	defaultDevice, err := portaudio.DefaultOutputDevice()
 	if err != nil {
 		fmt.Println("Failed to open the default output device:", err)
@@ -162,12 +188,20 @@ func main() {
 				go moo.Play(&sig)
 			case 45: // pad 2
 				go fart.Play(&sig)
+			case 46: // pad 3
+				go vaccuum.Play(&sig)
+
 			case 36: // pad 9
 				go scan.Play(&sig)
 			case 37: // pad 10
-				go bleep.Play(&sig)
-			case 38: // pad 11
 				go screenBeeps.Play(&sig)
+			case 38: // pad 11
+				go bleep.Play(&sig)
+			case 39: // pad 12
+				go buzz.Play(&sig)
+			case 43: // pad 16
+				go applause.Play(&sig)
+
 			default:
 				if rand.Intn(10)%2 == 0 {
 					go screenBeeps.Play(&sig)
