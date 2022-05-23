@@ -170,6 +170,15 @@ func main() {
 	defer applause.Close()
 
 	// -------------
+	computing, err := NewSample("sounds/computing_32b.wav", engine)
+	if err != nil {
+		fmt.Printf("failed to load sound - %v\n", err)
+		computing.Close()
+		os.Exit(1)
+	}
+	defer computing.Close()
+
+	// -------------
 	defaultDevice, err := portaudio.DefaultOutputDevice()
 	if err != nil {
 		fmt.Println("Failed to open the default output device:", err)
@@ -199,16 +208,24 @@ func main() {
 			case 46: // pad 3
 				go vaccuum.Play(&sig)
 			case 47: // pad 4
-				go endBuzz.Play(&sig)
-
-			case 36: // pad 9
-				go scan.Play(&sig)
-			case 37: // pad 10
-				go screenBeeps.Play(&sig)
-			case 38: // pad 11
 				go bleep.Play(&sig)
-			case 39: // pad 12
+			case 48: // pad 5
+				go endBuzz.Play(&sig)
+			case 49: // pad 6
+				go powerUp.Play(&sig)
+			case 51: // pad 8
+				go powerDown.Play(&sig)
+			//
+			case 36: // pad 9
+				go computing.Play(&sig)
+			case 37: // pad 11
 				go buzz.Play(&sig)
+			case 38:
+				go scan.Play(&sig)
+			case 39: // pad 13
+				go screenBeeps.Play(&sig)
+			case 40: // pad 14
+				//go bleep.Play(&sig)
 			case 43: // pad 16
 				go applause.Play(&sig)
 
